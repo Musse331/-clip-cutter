@@ -98,3 +98,16 @@ ipcMain.handle('export', async (e, { input, output, segs, fast }) => {
     return { ok: false, error: err.message };
   }
 });
+
+ipcMain.handle('preview', async (_e, input) => {
+  try {
+    const out = path.join(os.tmpdir(), 'clipcutter-preview-' + Date.now() + '.mp4');
+    await run(['-y', '-i', input, '-map', '0:v:0', '-map', '0:a:0?',
+               '-vf', 'scale=-2:480,fps=30', '-c:v', 'libx264', '-preset', 'ultrafast',
+               '-crf', '28', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '96k',
+               '-movflags', '+faststart', out]);
+    return { ok: true, path: out };
+  } catch (err) {
+    return { ok: false, error: err.message };
+  }
+});

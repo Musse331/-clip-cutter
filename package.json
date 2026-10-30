@@ -1,6 +1,6 @@
 {
   "name": "clip-cutter",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Simple video trimmer and cutter",
   "main": "main.js",
   "scripts": {

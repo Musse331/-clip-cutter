@@ -91,12 +91,30 @@ drop.ondrop=dropped;
 document.addEventListener('dragover',e=>e.preventDefault());
 document.addEventListener('drop',dropped);
 
+const dropHTML=drop.innerHTML;
+let proxied=false,ready=false,timer=null;
+function status(m){drop.style.display='';$('editor').style.display='none';drop.innerHTML='<b>'+m+'</b>'}
 function load(p){
-  inputPath=p;name=p.split(/[\\/]/).pop().replace(/\.[^.]+$/,'');
+  inputPath=p;proxied=false;ready=false;
+  name=p.split(/[\\/]/).pop().replace(/\.[^.]+$/,'');
+  status('Opening video…');
   v.src=api.toURL(p);
+  clearTimeout(timer);
+  timer=setTimeout(()=>{if(!ready)proxy()},4000);
 }
-v.onerror=()=>alert("This video's format can't be previewed here (try an mp4/h264 or webm file).");
+async function proxy(){
+  if(proxied)return;proxied=true;clearTimeout(timer);
+  status('Preparing preview… this can take a minute');
+  const r=await api.preview(inputPath);
+  if(!r.ok){drop.innerHTML=dropHTML;alert('Could not open this video:\n'+r.error);return}
+  v.src=api.toURL(r.path);
+}
+v.onerror=()=>{
+  if(!proxied)proxy();
+  else{drop.innerHTML=dropHTML;alert('Could not open this video.')}
+};
 v.onloadedmetadata=()=>{
+  ready=true;clearTimeout(timer);
   dur=v.duration;segs=[{s:0,e:dur}];sel=0;
   drop.style.display='none';$('editor').style.display='flex';$('newBtn').style.display='';
   render();upd();

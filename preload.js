@@ -3,6 +3,7 @@ const { pathToFileURL } = require('url');
 contextBridge.exposeInMainWorld('api', {
   open: () => ipcRenderer.invoke('open'),
   save: n => ipcRenderer.invoke('save', n),
+  preview: p => ipcRenderer.invoke('preview', p),
   exportClip: o => ipcRenderer.invoke('export', o),
   onProgress: cb => ipcRenderer.on('progress', (_e, f) => cb(f)),
   pathOf: f => webUtils.getPathForFile(f),
