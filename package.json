@@ -1,0 +1,26 @@
+{
+  "name": "clip-cutter",
+  "version": "1.0.0",
+  "description": "Simple video trimmer and cutter",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder"
+  },
+  "dependencies": {
+    "ffmpeg-static": "^5.2.0"
+  },
+  "devDependencies": {
+    "electron": "^33.0.0",
+    "electron-builder": "^25.0.0"
+  },
+  "build": {
+    "appId": "com.clipcutter.app",
+    "productName": "Clip Cutter",
+    "files": ["main.js", "preload.js", "index.html"],
+    "asarUnpack": ["node_modules/ffmpeg-static/**"],
+    "win": { "target": "nsis" },
+    "mac": { "target": "dmg" },
+    "linux": { "target": "AppImage" }
+  }
+}

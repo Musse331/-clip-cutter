@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Clip Cutter</title>
+<style>
+:root{--bg:#f5f5f7;--card:#fff;--text:#16161a;--mute:#6b6b76;--line:#e3e3e8;--accent:#6c5ce7;--accent2:#a29bfe;--danger:#e5484d;--track:#e9e9ef}
+@media (prefers-color-scheme:dark){:root{--bg:#0e0e12;--card:#18181f;--text:#f1f1f5;--mute:#8e8e9a;--line:#2a2a34;--accent:#8b7cff;--accent2:#5b4fd6;--danger:#ff6369;--track:#23232d}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.4 system-ui,-apple-system,"Segoe UI",sans-serif;min-height:100vh;display:flex;justify-content:center;padding:24px}
+.app{width:100%;max-width:880px;display:flex;flex-direction:column;gap:16px}
+header{display:flex;align-items:center;justify-content:space-between}
+h1{font-size:20px;margin:0;font-weight:700;letter-spacing:-.02em}
+h1 span{color:var(--accent)}
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:16px}
+button{font:inherit;border:1px solid var(--line);background:var(--card);color:var(--text);padding:9px 14px;border-radius:10px;cursor:pointer;transition:.15s}
+button:hover:not(:disabled){border-color:var(--accent);color:var(--accent)}
+button:disabled{opacity:.4;cursor:not-allowed}
+button.primary{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:600}
+button.primary:hover:not(:disabled){filter:brightness(1.1);color:#fff}
+button.danger:hover:not(:disabled){border-color:var(--danger);color:var(--danger)}
+#drop{border:2px dashed var(--line);border-radius:16px;padding:70px 20px;text-align:center;color:var(--mute);cursor:pointer;transition:.15s}
+#drop:hover,#drop.over{border-color:var(--accent);color:var(--accent);background:color-mix(in srgb,var(--accent) 6%,transparent)}
+#drop b{display:block;font-size:18px;color:var(--text);margin-bottom:6px}
+#editor{display:none;flex-direction:column;gap:16px}
+video{width:100%;max-height:52vh;background:#000;border-radius:12px;display:block}
+.bar{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.sp{flex:1}
+.time{font-variant-numeric:tabular-nums;color:var(--mute);font-size:14px}
+#track{position:relative;height:56px;background:var(--track);border-radius:10px;margin:14px 0 6px;cursor:pointer;touch-action:none;user-select:none}
+.seg{position:absolute;top:0;bottom:0;background:color-mix(in srgb,var(--accent) 35%,transparent);border:2px solid transparent;border-radius:8px}
+.seg.sel{background:color-mix(in srgb,var(--accent) 55%,transparent);border-color:var(--accent)}
+.h{position:absolute;top:-4px;bottom:-4px;width:14px;background:var(--accent);border-radius:6px;cursor:ew-resize;z-index:3}
+.h::after{content:"";position:absolute;left:5px;top:16px;bottom:16px;width:4px;border-left:1px solid #fff9;border-right:1px solid #fff9}
+.hl{margin-left:-7px}
+#ph{position:absolute;top:-8px;bottom:-8px;width:2px;background:var(--text);z-index:4;pointer-events:none}
+#ph::before{content:"";position:absolute;top:0;left:-5px;border:6px solid transparent;border-top-color:var(--text);border-bottom:0}
+.hint{color:var(--mute);font-size:13px}
+#prog{height:6px;background:var(--track);border-radius:6px;overflow:hidden;display:none}
+#prog div{height:100%;width:0;background:var(--accent)}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>Clip<span>Cutter</span></h1>
+    <button id="newBtn" style="display:none">Open another</button>
+  </header>
+
+  <div id="drop"><b>Drop a video here</b>or click to choose a file</div>
+
+  <div id="editor">
+    <div class="card">
+      <video id="v" playsinline></video>
+      <div id="track"></div>
+      <div class="bar">
+        <button id="play">▶ Play</button>
+        <span class="time" id="t">0:00.0 / 0:00.0</span>
+        <span class="sp"></span>
+        <span class="time" id="total">Kept: 0:00.0</span>
+      </div>
+    </div>
+    <div class="card bar">
+      <button id="split">✂ Split at playhead</button>
+      <button id="del" class="danger">Remove selected</button>
+      <button id="reset">Reset</button>
+      <span class="sp"></span>
+      <label class="hint" style="display:flex;gap:6px;align-items:center" title="No re-encode. Much faster, but cuts snap to keyframes"><input type="checkbox" id="fast"> Fast mode</label>
+      <button id="export" class="primary">Export clip</button>
+    </div>
+    <div id="prog"><div></div></div>
+    <div class="hint" id="hint">Drag the purple handles to trim. Split to cut out a middle part. Export saves an .mp4.</div>
+  </div>
+</div>
+
+<script>
+const $=id=>document.getElementById(id);
+const v=$('v'),track=$('track');
+let segs=[],sel=0,dur=0,name='clip',exporting=false,inputPath=null;
+const fmt=s=>{s=Math.max(0,s);const m=Math.floor(s/60);return m+':'+(s%60).toFixed(1).padStart(4,'0')};
+const pct=t=>(t/dur*100)+'%';
+const drop=$('drop');
+
+async function pick(){const p=await api.open();p&&load(p)}
+drop.onclick=pick;$('newBtn').onclick=pick;
+drop.ondragover=e=>{e.preventDefault();drop.classList.add('over')};
+drop.ondragleave=()=>drop.classList.remove('over');
+function dropped(e){e.preventDefault();drop.classList.remove('over');const f=e.dataTransfer.files[0];f&&load(api.pathOf(f))}
+drop.ondrop=dropped;
+document.addEventListener('dragover',e=>e.preventDefault());
+document.addEventListener('drop',dropped);
+
+function load(p){
+  inputPath=p;name=p.split(/[\\/]/).pop().replace(/\.[^.]+$/,'');
+  v.src=api.toURL(p);
+}
+v.onerror=()=>alert("This video's format can't be previewed here (try an mp4/h264 or webm file).");
+v.onloadedmetadata=()=>{
+  dur=v.duration;segs=[{s:0,e:dur}];sel=0;
+  drop.style.display='none';$('editor').style.display='flex';$('newBtn').style.display='';
+  render();upd();
+};
+
+// ---------- timeline ----------
+function render(){
+  track.innerHTML='<div id="ph"></div>';
+  segs.forEach((g,i)=>{
+    const d=document.createElement('div');
+    d.className='seg'+(i===sel?' sel':'');
+    d.style.left=pct(g.s);d.style.width=pct(g.e-g.s);
+    d.onpointerdown=e=>{if(e.target!==d)return;sel=i;render();};
+    track.appendChild(d);
+    if(i===sel){
+      d.append(handle('l',i),handle('r',i));
+    }
+  });
+  upd();
+}
+function handle(side,i){
+  const h=document.createElement('div');
+  h.className='h'+(side==='l'?' hl':'');
+  h.style[side==='l'?'left':'right']='-7px';
+  h.onpointerdown=e=>{
+    e.stopPropagation();h.setPointerCapture(e.pointerId);
+    const mv=ev=>{
+      const r=track.getBoundingClientRect();
+      let t=Math.min(dur,Math.max(0,(ev.clientX-r.left)/r.width*dur));
+      const g=segs[i],lo=i?segs[i-1].e:0,hi=i<segs.length-1?segs[i+1].s:dur;
+      if(side==='l')g.s=Math.min(Math.max(t,lo),g.e-.1);else g.e=Math.max(Math.min(t,hi),g.s+.1);
+      v.currentTime=side==='l'?g.s:g.e-.05;
+      render();
+    };
+    h.onpointermove=mv;
+    h.onpointerup=()=>{h.onpointermove=null};
+  };
+  return h;
+}
+let scrubbing=false;
+track.onpointerdown=e=>{
+  if(e.target!==track&&!e.target.classList.contains('seg'))return;
+  scrubbing=true;track.setPointerCapture(e.pointerId);seek(e);
+};
+track.onpointermove=e=>{if(scrubbing)seek(e)};
+track.onpointerup=()=>scrubbing=false;
+function seek(e){
+  const r=track.getBoundingClientRect();
+  v.currentTime=Math.min(dur,Math.max(0,(e.clientX-r.left)/r.width*dur));
+  const i=segs.findIndex(g=>v.currentTime>=g.s&&v.currentTime<=g.e);
+  if(i>=0&&i!==sel){sel=i;render()}
+}
+
+function upd(){
+  const ph=$('ph');if(ph&&dur)ph.style.left=pct(v.currentTime);
+  $('t').textContent=fmt(v.currentTime)+' / '+fmt(dur);
+  $('total').textContent='Kept: '+fmt(segs.reduce((a,g)=>a+g.e-g.s,0));
+  $('play').textContent=v.paused?'▶ Play':'❚❚ Pause';
+  $('del').disabled=segs.length<2||exporting;
+}
+
+// ---------- controls ----------
+$('play').onclick=()=>{
+  if(exporting)return;
+  if(v.paused){
+    const k=segs.find(g=>v.currentTime>=g.s&&v.currentTime<g.e);
+    if(!k){const n=segs.find(g=>g.s>v.currentTime)||segs[0];v.currentTime=n.s}
+    v.play();
+  }else v.pause();
+};
+document.addEventListener('keydown',e=>{if(e.code==='Space'&&e.target.tagName!=='BUTTON'){e.preventDefault();$('play').click()}});
+$('split').onclick=()=>{
+  const t=v.currentTime,i=segs.findIndex(g=>t>g.s+.1&&t<g.e-.1);
+  if(i<0)return;
+  const g=segs[i];segs.splice(i,1,{s:g.s,e:t},{s:t,e:g.e});sel=i+1;render();
+};
+$('del').onclick=()=>{segs.splice(sel,1);sel=Math.max(0,sel-1);render()};
+$('reset').onclick=()=>{segs=[{s:0,e:dur}];sel=0;render()};
+
+// playback loop: skip removed parts
+function loop(){
+  if(!exporting&&!v.paused){
+    const t=v.currentTime;
+    const k=segs.find(g=>t>=g.s&&t<g.e);
+    if(!k){
+      const n=segs.find(g=>g.s>t);
+      if(n)v.currentTime=n.s;else{v.pause();v.currentTime=segs[segs.length-1].e}
+    }
+  }
+  upd();requestAnimationFrame(loop);
+}
+requestAnimationFrame(loop);
+v.onended=()=>upd();
+
+// ---------- export ----------
+api.onProgress(f=>{$('prog').firstElementChild.style.width=(f*100)+'%'});
+$('export').onclick=async()=>{
+  if(exporting)return;
+  v.pause();
+  const out=await api.save(name+'-trimmed.mp4');
+  if(!out)return;
+  exporting=true;
+  $('export').disabled=true;$('export').textContent='Exporting…';
+  $('prog').style.display='block';$('prog').firstElementChild.style.width='0';
+  const r=await api.exportClip({input:inputPath,output:out,segs,fast:$('fast').checked});
+  exporting=false;
+  $('export').disabled=false;$('export').textContent='Export clip';
+  $('prog').style.display='none';
+  if(r.ok)$('hint').textContent='Saved: '+out;else alert('Export failed:\n'+r.error);
+  upd();
+};
+</script>
+</body>
+</html>
