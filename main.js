@@ -99,13 +99,27 @@ ipcMain.handle('export', async (e, { input, output, segs, fast }) => {
   }
 });
 
-ipcMain.handle('preview', async (_e, input) => {
+function probe(input) {
+  return new Promise(resolve => {
+    const p = spawn(ffmpeg, ['-i', input], { windowsHide: true });
+    let err = '';
+    p.stderr.on('data', d => err += d);
+    p.on('close', () => {
+      const m = err.match(/Duration:\s*(\d+):(\d+):([\d.]+)/);
+      resolve({ duration: m ? +m[1] * 3600 + +m[2] * 60 + +m[3] : 0 });
+    });
+  });
+}
+
+ipcMain.handle('preview', async (e, input) => {
   try {
+    const { duration } = await probe(input);
     const out = path.join(os.tmpdir(), 'clipcutter-preview-' + Date.now() + '.mp4');
-    await run(['-y', '-i', input, '-map', '0:v:0', '-map', '0:a:0?',
-               '-vf', 'scale=-2:480,fps=30', '-c:v', 'libx264', '-preset', 'ultrafast',
-               '-crf', '28', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-b:a', '96k',
-               '-movflags', '+faststart', out]);
+    await run(['-y', '-hwaccel', 'auto', '-i', input, '-map', '0:v:0', '-map', '0:a:0?',
+               '-vf', 'scale=-2:360,fps=24', '-c:v', 'libx264', '-preset', 'ultrafast',
+               '-tune', 'fastdecode', '-crf', '32', '-pix_fmt', 'yuv420p',
+               '-c:a', 'aac', '-b:a', '64k', '-movflags', '+faststart', out],
+      t => { if (duration) e.sender.send('previewProgress', Math.min(1, t / duration)); });
     return { ok: true, path: out };
   } catch (err) {
     return { ok: false, error: err.message };

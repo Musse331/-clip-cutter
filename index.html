@@ -100,11 +100,12 @@ function load(p){
   status('Opening video…');
   v.src=api.toURL(p);
   clearTimeout(timer);
-  timer=setTimeout(()=>{if(!ready)proxy()},4000);
+  timer=setTimeout(()=>{if(!ready)proxy()},3000);
 }
+api.onPreviewProgress(f=>{if(proxied&&!ready)status('Preparing preview… '+Math.round(f*100)+'%')});
 async function proxy(){
   if(proxied)return;proxied=true;clearTimeout(timer);
-  status('Preparing preview… this can take a minute');
+  status('Preparing preview… 0%');
   const r=await api.preview(inputPath);
   if(!r.ok){drop.innerHTML=dropHTML;alert('Could not open this video:\n'+r.error);return}
   v.src=api.toURL(r.path);
@@ -114,6 +115,7 @@ v.onerror=()=>{
   else{drop.innerHTML=dropHTML;alert('Could not open this video.')}
 };
 v.onloadedmetadata=()=>{
+  if(!isFinite(v.duration)||!v.duration){proxy();return}
   ready=true;clearTimeout(timer);
   dur=v.duration;segs=[{s:0,e:dur}];sel=0;
   drop.style.display='none';$('editor').style.display='flex';$('newBtn').style.display='';

@@ -4,6 +4,7 @@ contextBridge.exposeInMainWorld('api', {
   open: () => ipcRenderer.invoke('open'),
   save: n => ipcRenderer.invoke('save', n),
   preview: p => ipcRenderer.invoke('preview', p),
+  onPreviewProgress: cb => ipcRenderer.on('previewProgress', (_e, f) => cb(f)),
   exportClip: o => ipcRenderer.invoke('export', o),
   onProgress: cb => ipcRenderer.on('progress', (_e, f) => cb(f)),
   pathOf: f => webUtils.getPathForFile(f),
